@@ -5,34 +5,20 @@ import json
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
+from django.db.models import Q
+from api.serializer import ProductFullSerializer, ReviewSerializer, TagSerializer
+from products.models import ProductFull, Review, Tag
 
 User = get_user_model()
 
+
+
 def banners(request):
-	data = [
-		{
-			"id": "123",
-			"category": 55,
-			"price": 500.67,
-			"count": 12,
-			"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-			"title": "video card",
-			"description": "description of the product",
-			"freeDelivery": True,
-			"images": [
-				{
-					"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-					"alt": "any alt text",
-				}
-			],
-			"tags": [
-				"string"
-			],
-			"reviews": 5,
-			"rating": 4.6
-		},
-	]
+	random_objects = ProductFull.objects.order_by('?')[:2]
+	serializer = ProductFullSerializer(random_objects, many=True)
+	data = serializer.data
 	return JsonResponse(data, safe=False)
+
 
 def categories(request):
 	data = [
@@ -55,99 +41,73 @@ def categories(request):
 			 ]
 		 }
 	 ]
+
 	return JsonResponse(data, safe=False)
 
 
 def catalog(request):
+
+	filter_title = request.GET.get('filter[name]', '')
+	filter_min_price = request.GET.get('filter[minPrice]', 0)
+	filter_max_price = request.GET.get('filter[maxPrice]', 50000)
+	filter_free_delivery = request.GET.get('filter[freeDelivery]', False)
+	filter_available = request.GET.get('filter[available]', True)
+	current_page = request.GET.get('currentPage', 1)
+	sort_field = request.GET.get('sort', 'price')
+	sort_type = request.GET.get('sortType', 'inc')
+	limit = request.GET.get('limit', 20)
+
+	if filter_free_delivery == 'true':
+		filter_free_delivery = True
+	elif filter_free_delivery == 'false':
+		filter_free_delivery = False
+
+	if filter_available == 'true':
+		filter_available = True
+	elif filter_available == 'false':
+		filter_available = False
+
+	products = ProductFull.objects.filter(
+		Q(title__icontains=filter_title) | Q(description__icontains=filter_title),
+		price__gte=filter_min_price,
+		price__lte=filter_max_price,
+		freeDelivery=filter_free_delivery,
+		available=filter_available
+	)
+
+	if sort_type == 'inc':
+		products = products.order_by(sort_field)
+	elif sort_type == 'dec':
+		products = products.order_by(f'-{sort_field}')
+
+	total_count = products.count()
+
+	start_index = (int(current_page) - 1) * int(limit)
+	end_index = int(start_index) + int(limit)
+	products = products[start_index:end_index]
+
+	serializer = ProductFullSerializer(products, many=True)
 	data = {
-		 "items": [
-				 {
-					 "id": 123,
-					 "category": 123,
-					 "price": 500.67,
-					 "count": 12,
-					 "date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-					 "title": "video card",
-					 "description": "description of the product",
-					 "freeDelivery": True,
-					 "images": [
-					 		{
-					 			"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-					 			"alt": "hello alt",
-							}
-					 ],
-					 "tags": [
-					 		{
-					 			"id": 0,
-					 			"name": "Hello world"
-					 		}
-					 ],
-					 "reviews": 5,
-					 "rating": 4.6
-				 }
-		 ],
-		 "currentPage": randrange(1, 4),
-		 "lastPage": 3
-	 }
+		'items': serializer.data,
+		'totalCount': total_count
+	}
+
 	return JsonResponse(data)
 
+
 def productsPopular(request):
-	data = [
-		{
-			"id": "123",
-			"category": 55,
-			"price": 500.67,
-			"count": 12,
-			"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-			"title": "video card",
-			"description": "description of the product",
-			"freeDelivery": True,
-			"images": [
-					{
-						"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-						"alt": "hello alt",
-					}
-			 ],
-			 "tags": [
-					{
-						"id": 0,
-						"name": "Hello world"
-					}
-			 ],
-			"reviews": 5,
-			"rating": 4.6
-		}
-	]
+	products = ProductFull.objects.order_by('-rating')
+	serialized = ProductFullSerializer(products, many=True)
+	data = serialized.data
 	return JsonResponse(data, safe=False)
 
+
 def productsLimited(request):
-	data = [
-		{
-			"id": "123",
-			"category": 55,
-			"price": 500.67,
-			"count": 12,
-			"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-			"title": "video card",
-			"description": "description of the product",
-			"freeDelivery": True,
-			"images": [
-					{
-						"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-						"alt": "hello alt",
-					}
-			 ],
-			 "tags": [
-					{
-						"id": 0,
-						"name": "Hello world"
-					}
-			 ],
-			"reviews": 5,
-			"rating": 4.6
-		}
-	]
+	products = ProductFull.objects.filter(limited_edition=True)[:16]
+	serialized = ProductFullSerializer(products, many=True)
+	data = serialized.data
 	return JsonResponse(data, safe=False)
+
 
 def sales(request):
 	data = {
@@ -171,6 +131,7 @@ def sales(request):
 		'lastPage': 3,
 	}
 	return JsonResponse(data)
+
 
 def basket(request):
 	if(request.method == "GET"):
@@ -343,74 +304,45 @@ def signOut(request):
 	logout(request)
 	return HttpResponse(status=200)
 
+
 def product(request, id):
-	data = {
-		"id": 123,
-		"category": 55,
-		"price": 500.67,
-		"count": 12,
-		"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-		"title": "video card",
-		"description": "description of the product",
-		"fullDescription": "full description of the product",
-		"freeDelivery": True,
-		"images": [
-				{
-					"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-					"alt": "hello alt",
-				}
-		 ],
-		 "tags": [
-				{
-					"id": 0,
-					"name": "Hello world"
-				}
-		 ],
-		"reviews": [
-			{
-				"author": "Annoying Orange",
-				"email": "no-reply@mail.ru",
-				"text": "rewrewrwerewrwerwerewrwerwer",
-				"rate": 4,
-				"date": "2023-05-05 12:12"
-			}
-		],
-		"specifications": [
-			{
-				"name": "Size",
-				"value": "XL"
-			}
-		],
-		"rating": 4.6
-	}
+	product_by_id = ProductFull.objects.get(pk=id)
+	serializer = ProductFullSerializer(product_by_id)
+	data = serializer.data
+
+	reviews = Review.objects.filter(product=product_by_id)
+	reviews_serializer = ReviewSerializer(reviews, many=True)
+	data['reviews'] = reviews_serializer.data
+
+
 	return JsonResponse(data)
 
+
 def tags(request):
-	data = [
-		{ "id": 0, "name": 'tag0' },
-		{ "id": 1, "name": 'tag1' },
-		{ "id": 2, "name": 'tag2' },
-	]
+	tags = Tag.objects.all()
+	serialized = TagSerializer(tags, many=True)
+	data = serialized.data
+
 	return JsonResponse(data, safe=False)
 
+
 def productReviews(request, id):
-	data = [
-    {
-      "author": "Annoying Orange",
-      "email": "no-reply@mail.ru",
-      "text": "rewrewrwerewrwerwerewrwerwer",
-      "rate": 4,
-      "date": "2023-05-05 12:12"
-    },
-    {
-      "author": "2Annoying Orange",
-      "email": "no-reply@mail.ru",
-      "text": "rewrewrwerewrwerwerewrwerwer",
-      "rate": 5,
-      "date": "2023-05-05 12:12"
-    },
-	]
-	return JsonResponse(data, safe=False)
+	product_by_id = ProductFull.objects.get(pk=id)
+	reviews = Review.objects.filter(product=product_by_id)
+	reviews_serializer = ReviewSerializer(reviews, many=True)
+	data = reviews_serializer.data
+
+	if request.method == 'POST':
+		data = json.loads(request.body)
+		serializer = ReviewSerializer(data=data)
+		if serializer.is_valid():
+			serializer.save(product_id=id)
+			data = serializer.data
+			return JsonResponse(data, safe=False)
+
+		else:
+			return JsonResponse({"error": "Incorrect Data"}, status=405)
+
 
 def profile(request):
 	if(request.method == 'GET'):
