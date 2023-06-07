@@ -1,16 +1,21 @@
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpRequest, HttpResponseRedirect
 from random import randrange
 import json
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.db.models import Q
-from api.serializer import ProductFullSerializer, ReviewSerializer, TagSerializer
+from api.serializer import ProductFullSerializer, ReviewSerializer, TagSerializer, ProfilesSerializer, ProductSaleSerializer
 from products.models import ProductFull, Review, Tag
+from math import ceil
+from django.db.models import Count
+from rest_framework.decorators import api_view
+from django.urls import reverse
+
+from profiles.models import Profile
 
 User = get_user_model()
-
 
 
 def banners(request):
@@ -22,25 +27,25 @@ def banners(request):
 
 def categories(request):
 	data = [
-		 {
-			 "id": 123,
-			 "title": "video card",
-			 "image": {
-				"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-				 "alt": "Image alt string"
-			 },
-			 "subcategories": [
-				 {
-					 "id": 123,
-					 "title": "video card",
-					 "image": {
-							"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-						 	"alt": "Image alt string"
-					 }
-				 }
-			 ]
-		 }
-	 ]
+		{
+			"id": 123,
+			"title": "video card",
+			"image": {
+				"src": "/3.png",
+				"alt": "Image alt string"
+			},
+			"subcategories": [
+				{
+					"id": 123,
+					"title": "video card",
+					"image": {
+						"src": "/3.png",
+						"alt": "Image alt string"
+					}
+				}
+			]
+		}
+	]
 
 	return JsonResponse(data, safe=False)
 
@@ -50,30 +55,44 @@ def catalog(request):
 	filter_title = request.GET.get('filter[name]', '')
 	filter_min_price = request.GET.get('filter[minPrice]', 0)
 	filter_max_price = request.GET.get('filter[maxPrice]', 50000)
-	filter_free_delivery = request.GET.get('filter[freeDelivery]', False)
-	filter_available = request.GET.get('filter[available]', True)
-	current_page = request.GET.get('currentPage', 1)
+	filter_free_delivery = request.GET.get('filter[freeDelivery]')
+	filter_available = request.GET.get('filter[available]')
+	current_page = int(request.GET.get('currentPage', 1))
 	sort_field = request.GET.get('sort', 'price')
 	sort_type = request.GET.get('sortType', 'inc')
-	limit = request.GET.get('limit', 20)
+	limit = int(request.GET.get('limit', 20))
+	tags = request.GET.getlist('tags[]')
+
 
 	if filter_free_delivery == 'true':
 		filter_free_delivery = True
 	elif filter_free_delivery == 'false':
-		filter_free_delivery = False
+		filter_free_delivery = None
 
 	if filter_available == 'true':
 		filter_available = True
 	elif filter_available == 'false':
-		filter_available = False
+		filter_available = None
 
 	products = ProductFull.objects.filter(
 		Q(title__icontains=filter_title) | Q(description__icontains=filter_title),
 		price__gte=filter_min_price,
 		price__lte=filter_max_price,
-		freeDelivery=filter_free_delivery,
-		available=filter_available
 	)
+
+	if filter_available:
+		products = products.filter(available=filter_available)
+
+	if filter_free_delivery:
+		products = products.filter(freeDelivery=filter_free_delivery)
+
+	if tags:
+		for tag in tags:
+			products = products.filter(tags__pk=tag)
+
+	if sort_field == 'reviews':
+		products = products.annotate(num_reviews=Count('reviews'))
+		sort_field = 'num_reviews'
 
 	if sort_type == 'inc':
 		products = products.order_by(sort_field)
@@ -81,15 +100,17 @@ def catalog(request):
 		products = products.order_by(f'-{sort_field}')
 
 	total_count = products.count()
+	page_count = ceil(total_count / limit)
 
-	start_index = (int(current_page) - 1) * int(limit)
-	end_index = int(start_index) + int(limit)
+	start_index = (current_page - 1) * limit
+	end_index = start_index + limit
 	products = products[start_index:end_index]
 
 	serializer = ProductFullSerializer(products, many=True)
 	data = {
 		'items': serializer.data,
-		'totalCount': total_count
+		'currentPage': current_page,
+		'lastPage': page_count,
 	}
 
 	return JsonResponse(data)
@@ -110,26 +131,24 @@ def productsLimited(request):
 
 
 def sales(request):
+	products = ProductFull.objects.exclude(salePrice__isnull=True)
+	current_page = int(request.GET.get('currentPage', 1))
+	limit = int(request.GET.get('limit', 20))
+
+	total_count = products.count()
+	page_count = ceil(total_count / limit)
+
+	start_index = (current_page - 1) * limit
+	end_index = start_index + limit
+	products = products[start_index:end_index]
+
+	serializer = ProductSaleSerializer(products, many=True)
 	data = {
-		'items': [
-			{
-				"id": 123,
-				"price": 500.67,
-				"salePrice": 200.67,
-				"dateFrom": "05-08",
-				"dateTo": "05-20",
-				"title": "video card",
-				"images": [
-						{
-							"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-							"alt": "hello alt",
-						}
-				 ],
-			}
-		],
-		'currentPage': randrange(1, 4),
-		'lastPage': 3,
+		'items': serializer.data,
+		'currentPage': current_page,
+		'lastPage': page_count,
 	}
+
 	return JsonResponse(data)
 
 
@@ -327,11 +346,6 @@ def tags(request):
 
 
 def productReviews(request, id):
-	product_by_id = ProductFull.objects.get(pk=id)
-	reviews = Review.objects.filter(product=product_by_id)
-	reviews_serializer = ReviewSerializer(reviews, many=True)
-	data = reviews_serializer.data
-
 	if request.method == 'POST':
 		data = json.loads(request.body)
 		serializer = ReviewSerializer(data=data)
@@ -344,17 +358,17 @@ def productReviews(request, id):
 			return JsonResponse({"error": "Incorrect Data"}, status=405)
 
 
-def profile(request):
+@api_view(['GET'])
+def profile(request: HttpRequest):
 	if(request.method == 'GET'):
-		data = {
-			"fullName": "Annoying Orange",
-			"email": "no-reply@mail.ru",
-			"phone": "88002000600",
-			"avatar": {
-				"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-				"alt": "hello alt",
-			}
-		}
+		if request.user.is_anonymous:
+			redirect_url = reverse('frontend:sign-in')
+			return HttpResponseRedirect(redirect_url)
+
+		profile = Profile.objects.get(user=request.user)
+		serialized = ProfilesSerializer(profile)
+		data = serialized.data
+		print(data)
 		return JsonResponse(data)
 
 	elif(request.method == 'POST'):

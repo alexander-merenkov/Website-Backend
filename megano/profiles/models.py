@@ -11,7 +11,16 @@ def avatar_uploads(instance: User, filename) -> str:
 
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    full_name = models.CharField(verbose_name='name', max_length=100, unique=True)
+    fullName = models.CharField(max_length=100, unique=True)
     phone = models.CharField(verbose_name='phone number', max_length=16)
     email = models.EmailField(unique=True)
-    avatar = models.ImageField(null=True, blank=True, upload_to=avatar_uploads)
+    avatar = models.OneToOneField('Avatar', on_delete=models.CASCADE, null=True, blank=True)
+
+    def __str__(self):
+        return self.fullName
+
+
+class Avatar(models.Model):
+    src = models.ImageField(null=True, blank=True, upload_to=avatar_uploads)
+    alt = models.CharField(max_length=100)
+

@@ -28,6 +28,17 @@ class Tag(models.Model):
         return self.name
 
 
+class Specifications(models.Model):
+    class Meta:
+        verbose_name = 'Specifications'
+        verbose_name_plural = 'Specifications'
+    name = models.CharField(blank=True, null=False, max_length=50)
+    value = models.CharField(blank=True, null=False, max_length=50)
+
+    def __str__(self):
+        return f'{self.name}: {self.value}'
+
+
 class ProductFull(models.Model):
     class Meta:
         verbose_name = 'Product'
@@ -41,11 +52,14 @@ class ProductFull(models.Model):
     fullDescription = models.TextField(blank=True, null=True)
     freeDelivery = models.BooleanField()
     images = models.ManyToManyField(Image)
-    tags = models.ManyToManyField(Tag)
-    specifications = models.TextField(max_length=100, blank=True)
+    tags = models.ManyToManyField(Tag, blank=True)
     rating = models.FloatField(null=True, blank=True)
     limited_edition = models.BooleanField(default=False)
     available = models.BooleanField(default=True)
+    salePrice = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    dateFrom = models.DateField(blank=True, null=True)
+    dateTo = models.DateField(blank=True, null=True)
+    specifications = models.ManyToManyField(Specifications)
 
     def __str__(self):
         return self.title
@@ -69,3 +83,5 @@ class Review(models.Model):
         average_rating = reviews.aggregate(Avg('rate'))['rate__avg']
         product.rating = average_rating
         product.save()
+
+
