@@ -6,8 +6,15 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.db.models import Q
-from api.serializer import ProductFullSerializer, ReviewSerializer, TagSerializer, ProfilesSerializer, ProductSaleSerializer
-from products.models import ProductFull, Review, Tag
+from api.serializer import (
+	ProductFullSerializer,
+	ReviewSerializer,
+	TagSerializer,
+	ProfilesSerializer,
+	ProductSaleSerializer,
+	CategorySerializer
+)
+from products.models import ProductFull, Review, Tag, Category
 from math import ceil
 from django.db.models import Count
 from rest_framework.decorators import api_view
@@ -26,26 +33,9 @@ def banners(request):
 
 
 def categories(request):
-	data = [
-		{
-			"id": 123,
-			"title": "video card",
-			"image": {
-				"src": "/3.png",
-				"alt": "Image alt string"
-			},
-			"subcategories": [
-				{
-					"id": 123,
-					"title": "video card",
-					"image": {
-						"src": "/3.png",
-						"alt": "Image alt string"
-					}
-				}
-			]
-		}
-	]
+	category_list = Category.objects.all()
+	serialized = CategorySerializer(category_list, many=True)
+	data = serialized.data
 
 	return JsonResponse(data, safe=False)
 
@@ -62,7 +52,6 @@ def catalog(request):
 	sort_type = request.GET.get('sortType', 'inc')
 	limit = int(request.GET.get('limit', 20))
 	tags = request.GET.getlist('tags[]')
-
 
 	if filter_free_delivery == 'true':
 		filter_free_delivery = True

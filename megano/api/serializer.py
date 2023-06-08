@@ -1,7 +1,7 @@
 from rest_framework import serializers
-from products.models import ProductFull, Image, Tag, Category, Review, Specifications
+from products.models import ProductFull, Image, Tag, Category, Review, Specifications, CategoryImage
 from profiles.models import Profile, Avatar
-
+from django.conf import settings
 
 class ImageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,12 +15,6 @@ class TagSerializer(serializers.ModelSerializer):
         fields = 'id', 'name'
 
 
-class CategorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Category
-        fields = 'id', 'name'
-
-
 class SpecificationsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Specifications
@@ -30,7 +24,6 @@ class SpecificationsSerializer(serializers.ModelSerializer):
 class ProductFullSerializer(serializers.ModelSerializer):
     images = ImageSerializer(many=True)
     tags = TagSerializer(many=True)
-    category = CategorySerializer()
     specifications = SpecificationsSerializer(many=True)
 
     class Meta:
@@ -74,6 +67,28 @@ class ProductSaleSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductFull
         fields = ['id', 'price', 'salePrice', 'dateFrom', 'dateTo', 'title', 'images']
+
+
+class CategoryImageSerializer(serializers.ModelSerializer):
+    src = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CategoryImage
+        fields = 'src', 'alt'
+
+    def get_src(self, obj):
+        file_name = obj.src.name
+        file_url = settings.MEDIA_URL + file_name
+        return file_url
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    image = CategoryImageSerializer()
+
+    class Meta:
+        model = Category
+        fields = 'id', 'title', 'image', 'subcategories'
+
 
 
 

@@ -3,14 +3,25 @@ from django.db import models
 from django.db.models import Avg
 
 
+class CategoryImage(models.Model):
+    src = models.ImageField(upload_to='categoryimages/')
+    alt = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.alt
+
+
 class Category(models.Model):
     class Meta:
         verbose_name = 'Category'
         verbose_name_plural = 'Categories'
-    name = models.CharField(max_length=100)
+
+    title = models.CharField(max_length=255, null=True, blank=True)
+    image = models.OneToOneField(CategoryImage, on_delete=models.CASCADE, null=True)
+    subcategories = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=False)
 
     def __str__(self):
-        return self.name
+        return str(self.title)
 
 
 class Image(models.Model):
