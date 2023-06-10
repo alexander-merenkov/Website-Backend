@@ -97,7 +97,7 @@ class CategorySerializer(serializers.ModelSerializer):
 class AvatarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Avatar
-        fields = 'scr', 'alt'
+        fields = 'src', 'alt'
 
 
 class ProfilesSerializer(serializers.ModelSerializer):

@@ -24,3 +24,6 @@ class Avatar(models.Model):
     src = models.ImageField(null=True, blank=True, upload_to=avatar_uploads)
     alt = models.CharField(max_length=100)
 
+    def __str__(self):
+        return f'url: {self.src}, alt: {self.alt}'
+

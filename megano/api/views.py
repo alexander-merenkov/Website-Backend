@@ -1,8 +1,9 @@
+from django.core.files.storage import FileSystemStorage
 from django.shortcuts import render
 from django.http import JsonResponse, HttpRequest, HttpResponseRedirect
 from random import randrange
 import json
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.db.models import Q
@@ -19,8 +20,9 @@ from math import ceil
 from django.db.models import Count
 from rest_framework.decorators import api_view
 from django.urls import reverse
-
-from profiles.models import Profile
+from django.db import IntegrityError
+from profiles.models import Profile, Avatar
+from django.db import transaction
 
 User = get_user_model()
 
@@ -52,6 +54,7 @@ def catalog(request):
 	sort_type = request.GET.get('sortType', 'inc')
 	limit = int(request.GET.get('limit', 20))
 	tags = request.GET.getlist('tags[]')
+	category = request.GET.get('category')
 
 	if filter_free_delivery == 'true':
 		filter_free_delivery = True
@@ -68,6 +71,9 @@ def catalog(request):
 		price__gte=filter_min_price,
 		price__lte=filter_max_price,
 	)
+	if category != 'NaN':
+		products = products.filter(category=category)
+
 
 	if filter_available:
 		products = products.filter(available=filter_available)
@@ -291,6 +297,7 @@ def orders(request):
 		]
 		return JsonResponse(data, safe=False)
 
+
 def signIn(request):
 	if request.method == "POST":
 		body = json.loads(request.body)
@@ -303,10 +310,25 @@ def signIn(request):
 		else:
 			return HttpResponse(status=500)
 
+
 def signUp(request):
-	user = User.objects.create_user("mir232", "lennon@thebeatles.com", "pass232")
-	user.save()
-	return HttpResponse(status=200)
+	if request.method == "POST":
+		body = json.loads(request.body)
+		username = body['username']
+		password = body['password']
+
+		if not username or not password:
+			return HttpResponse(status=500)
+
+		try:
+			User.objects.create_user(username=username, password=password)
+			user = authenticate(request, username=username, password=password)
+			login(request, user)
+			return HttpResponse(status=200)
+
+		except IntegrityError as ecx:
+			return HttpResponse('User is already exist', status=500)
+
 
 def signOut(request):
 	logout(request)
@@ -347,35 +369,47 @@ def productReviews(request, id):
 			return JsonResponse({"error": "Incorrect Data"}, status=405)
 
 
-@api_view(['GET'])
 def profile(request: HttpRequest):
 	if(request.method == 'GET'):
-		if request.user.is_anonymous:
-			redirect_url = reverse('frontend:sign-in')
-			return HttpResponseRedirect(redirect_url)
-
 		profile = Profile.objects.get(user=request.user)
 		serialized = ProfilesSerializer(profile)
 		data = serialized.data
-		print(data)
 		return JsonResponse(data)
 
 	elif(request.method == 'POST'):
-		data = {
-			"fullName": "Annoying Green",
-			"email": "no-reply@mail.ru",
-			"phone": "88002000600",
-			"avatar": {
-				"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-				"alt": "hello alt",
-			}
-		}
+		data = json.loads(request.body)
+		fullName = data['fullName']
+		phone = data['phone']
+		email = data['email']
+
+		profile, created = Profile.objects.get_or_create(user=request.user)
+		profile.user = request.user
+		profile.fullName = fullName
+		profile.phone = phone
+		profile.email = email
+		profile.save()
+
 		return JsonResponse(data)
 
 	return HttpResponse(status=500)
 
+
 def profilePassword(request):
+	data = json.loads(request.body)
+	currentPassword = data['currentPassword']
+	newPassword = data('newPassword')
+
+	user = authenticate(username=request.user.username, password=currentPassword)
+
+	if user is None:
+		return HttpResponse(status=500)
+
+	user.set_password(newPassword)
+	user.save()
+	update_session_auth_hash(request, user)
+
 	return HttpResponse(status=200)
+
 
 def orders(request):
 	if(request.method == 'GET'):
@@ -522,7 +556,35 @@ def payment(request, id):
 	print('qweqwewqeqwe', id)
 	return HttpResponse(status=200)
 
+
 def avatar(request):
 	if request.method == "POST":
-# 		print(request.FILES["avatar"])
+		myfile = request.FILES['avatar']
+		fs = FileSystemStorage()
+
+		if myfile.size < 2097152:
+			path = 'users/user_{pk}/avatar/{filename}'.format(
+				pk=request.user.pk,
+				filename=myfile.name,
+			)
+
+			fs.save(path, myfile)
+
+			profile= Profile.objects.get(user=request.user)
+
+			if profile.avatar:
+				avatar = profile.avatar
+				fs.delete(avatar.src.path)
+				avatar.src = path
+				avatar.alt = f"Avatar of {profile.user}"
+			else:
+				avatar = Avatar.objects.create(src=path, alt=f"Avatar of {profile.user}")
+
+			avatar.save()
+			profile.avatar = avatar
+			profile.save()
+
+		else:
+			print('File Size is too big')
+			return HttpResponse('File is more than 2mb', status=200)
 		return HttpResponse(status=200)
