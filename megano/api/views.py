@@ -38,7 +38,6 @@ def categories(request):
 	category_list = Category.objects.all()
 	serialized = CategorySerializer(category_list, many=True)
 	data = serialized.data
-
 	return JsonResponse(data, safe=False)
 
 
@@ -71,9 +70,8 @@ def catalog(request):
 		price__gte=filter_min_price,
 		price__lte=filter_max_price,
 	)
-	if category != 'NaN':
+	if category:
 		products = products.filter(category=category)
-
 
 	if filter_available:
 		products = products.filter(available=filter_available)
@@ -397,7 +395,7 @@ def profile(request: HttpRequest):
 def profilePassword(request):
 	data = json.loads(request.body)
 	currentPassword = data['currentPassword']
-	newPassword = data('newPassword')
+	newPassword = data['newPassword']
 
 	user = authenticate(username=request.user.username, password=currentPassword)
 

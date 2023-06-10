@@ -89,6 +89,12 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = 'id', 'title', 'image', 'subcategories'
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        if representation['subcategories'] is None:
+            representation['subcategories'] = ''
+        return representation
+
 
 
 
