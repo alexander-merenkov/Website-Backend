@@ -13,7 +13,8 @@ from api.serializer import (
 	TagSerializer,
 	ProfilesSerializer,
 	ProductSaleSerializer,
-	CategorySerializer
+	CategorySerializer,
+	BasketItemSerializer,
 )
 from products.models import ProductFull, Review, Tag, Category
 from math import ceil
@@ -23,6 +24,8 @@ from django.urls import reverse
 from django.db import IntegrityError
 from profiles.models import Profile, Avatar
 from django.db import transaction
+
+from shop.models import Basket, BasketItem
 
 User = get_user_model()
 
@@ -147,122 +150,62 @@ def sales(request):
 
 def basket(request):
 	if(request.method == "GET"):
-		print('[GET] /api/basket/')
-		data = [
-			{
-				"id": 123,
-				"category": 55,
-				"price": 500.67,
-				"count": 12,
-				"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-				"title": "video card",
-				"description": "description of the product",
-				"freeDelivery": True,
-				"images": [
-						{
-							"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-							"alt": "hello alt",
-						}
-				 ],
-				 "tags": [
-						{
-							"id": 0,
-							"name": "Hello world"
-						}
-				 ],
-				"reviews": 5,
-				"rating": 4.6
-			},
-			{
-				"id": 124,
-				"category": 55,
-				"price": 201.675,
-				"count": 5,
-				"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-				"title": "video card",
-				"description": "description of the product",
-				"freeDelivery": True,
-				"images": [
-						{
-							"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-							"alt": "hello alt",
-						}
-				 ],
-				 "tags": [
-						{
-							"id": 0,
-							"name": "Hello world"
-						}
-				 ],
-				"reviews": 5,
-				"rating": 4.6
-			}
-		]
+		basket = Basket.objects.get(user=request.user)
+		basket_items = BasketItem.objects.all().filter(basket=basket)
+		data = []
+		for basket_item in basket_items:
+			serialized = ProductFullSerializer(basket_item.product)
+			new_data = serialized.data
+			new_data['count'] = basket_item.count
+			data.append(new_data)
 		return JsonResponse(data, safe=False)
 
 	elif (request.method == "POST"):
 		body = json.loads(request.body)
-		id = body['id']
+		product_id = body['id']
 		count = body['count']
-		print('[POST] /api/basket/   |   id: {id}, count: {count}'.format(id=id, count=count))
-		data = [
-			{
-				"id": id,
-				"category": 55,
-				"price": 500.67,
-				"count": 13,
-				"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-				"title": "video card",
-				"description": "description of the product",
-				"freeDelivery": True,
-				"images": [
-						{
-							"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-							"alt": "hello alt",
-						}
-				 ],
-				 "tags": [
-						{
-							"id": 0,
-							"name": "Hello world"
-						}
-				 ],
-				"reviews": 5,
-				"rating": 4.6
-			}
-		]
+		user = request.user
+		if user.is_authenticated:
+			basket, basket_created = Basket.objects.get_or_create(user=user)
+			product = ProductFull.objects.get(id=product_id)
+			basket_item, item_created = BasketItem.objects.get_or_create(
+				basket=basket,
+				product=product,
+			)
+			if item_created:
+				basket_item.count = count
+			else:
+				if count:
+					basket_item.count += int(count)
+
+			basket_item.save()
+
+		serialized = ProductFullSerializer(product)
+		data = serialized.data
 		return JsonResponse(data, safe=False)
 
 	elif (request.method == "DELETE"):
 		body = json.loads(request.body)
-		id = body['id']
-		print('[DELETE] /api/basket/')
-		data = [
-			{
-			"id": id,
-			"category": 55,
-			"price": 500.67,
-			"count": 11,
-			"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-			"title": "video card",
-			"description": "description of the product",
-			"freeDelivery": True,
-			"images": [
-					{
-						"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-						"alt": "hello alt",
-					}
-			 ],
-			 "tags": [
-					{
-						"id": 0,
-						"name": "Hello world"
-					}
-			 ],
-			"reviews": 5,
-			"rating": 4.6
-			}
-		]
+		product_id = body['id']
+		count = body['count']
+		print(count)
+		user = request.user
+		basket = Basket.objects.get(user=user)
+		product = ProductFull.objects.get(id=product_id)
+		basket_item = BasketItem.objects.get(
+			basket=basket,
+			product=product,
+		)
+		if count == 1 and basket_item.count == 1:
+			basket_item.delete()
+		else:
+			basket_item.count -= 1
+			basket_item.save()
+
+		serialized = ProductFullSerializer(product)
+		data = serialized.data
+		update_session_auth_hash(request, user)
+
 		return JsonResponse(data, safe=False)
 
 def orders(request):

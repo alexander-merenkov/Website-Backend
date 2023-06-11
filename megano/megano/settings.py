@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'django_filters',
     'profiles.apps.ProfilesConfig',
     'products.apps.ProductsConfig',
+    'shop.apps.ShopConfig',
 
 ]
 
