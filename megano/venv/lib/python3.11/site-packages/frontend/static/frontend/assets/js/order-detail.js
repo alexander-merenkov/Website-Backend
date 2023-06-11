@@ -24,7 +24,7 @@ var mix = {
 		},
 		confirmOrder() {
 			if (this.orderId !== null) {
-				this.postData(`/api/order/${this.orderId}`, { ...this })
+				this.postData(`/api/order/${this.orderId}/`, { ...this })
 					.then(({ data: { orderId } }) => {
 						alert('Заказ подтвержден')
 						location.replace(`/payment/${orderId}/`)

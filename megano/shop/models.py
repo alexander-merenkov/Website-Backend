@@ -20,7 +20,8 @@ class BasketItem(models.Model):
 
 
 class Order(models.Model):
-    createdAt = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True)
+    createdAt = models.DateTimeField(null=True)
     fullName = models.CharField(max_length=100, blank=True)
     email = models.EmailField()
     phone = models.CharField(verbose_name='phone number', max_length=16)

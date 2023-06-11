@@ -1,5 +1,6 @@
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.storage import FileSystemStorage
+from django.utils import timezone
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpRequest, HttpResponseRedirect
 from random import randrange
@@ -151,7 +152,7 @@ def sales(request):
 def basket(request):
 	if(request.method == "GET"):
 		basket = Basket.objects.get(user=request.user)
-		basket_items = BasketItem.objects.all().filter(basket=basket)
+		basket_items = BasketItem.objects.filter(basket=basket)
 		data = []
 		for basket_item in basket_items:
 			serialized = ProductFullSerializer(basket_item.product)
@@ -455,73 +456,57 @@ def orders(request):
 
 	return HttpResponse(status=500)
 
-
+@transaction.atomic
 def order(request, id):
+
 	profile, created_profile = Profile.objects.get_or_create(user=request.user)
 	basket = Basket.objects.get(user=request.user)
 	basket_items = BasketItem.objects.filter(basket=basket)
 
-	order, created_order = Order.objects.get_or_create(
-		fullName=profile.fullName,
-		email=profile.email,
-		phone=profile.phone,
+	try:
+		order = Order.objects.get(status='created')
+	except ObjectDoesNotExist:
+		order = Order.objects.create(
+			user=request.user,
+			fullName=profile.fullName,
+			email=profile.email,
+			phone=profile.phone,
+			status='created',
 	)
+
 	for basket_item in basket_items:
+		basket_item.product.count = basket_item.count
+		basket_item.product.save()
 		order.products.add(basket_item.product)
-		order.save()
 
-
-
-
+	serialized = OrderSerializer(order)
+	data = serialized.data
 
 	if(request.method == 'GET'):
-		serialized = OrderSerializer(order)
-		data = serialized.data
-
-
-		# data = {
-		# 	"id": 123,
-		# 	"createdAt": "2023-05-05 12:12",
-		# 	"fullName": "Annoying Orange!!!!",
-		# 	"email": "no-reply@mail.ru",
-		# 	"phone": "88002000600",
-		# 	"deliveryType": "free",
-		# 	"paymentType": "online",
-		# 	"totalCost": 567.8,
-		# 	"status": "accepted",
-		# 	"city": "Moscow",
-		# 	"address": "red square 1",
-		# 	"products": [
-		# 		{
-		# 			"id": 123,
-		# 			"category": 55,
-		# 			"price": 500.67,
-		# 			"count": 12,
-		# 			"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-		# 			"title": "video card",
-		# 			"description": "description of the product",
-		# 			"freeDelivery": True,
-		# 			"images": [
-		# 				{
-		# 				"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-		# 				"alt": "Image alt string"
-		# 				}
-		# 			],
-		# 			"tags": [
-		# 				{
-		# 				"id": 12,
-		# 				"name": "Gaming"
-		# 				}
-		# 			],
-		# 			"reviews": 5,
-		# 			"rating": 4.6
-		# 		},
-		# 	]
-		# }
 		return JsonResponse(data)
 
 	elif(request.method == 'POST'):
-		data = { "orderId": 123 }
+		body = json.loads(request.body)
+		order.createdAt = timezone.now()
+		order.fullName = body['fullName']
+		order.email = body['email']
+		order.phone = body['phone']
+		order.deliveryType = body['deliveryType']
+		order.paymentType = body['paymentType']
+		order.city = body['city']
+		order.address = body['address']
+
+		total_cost = 0
+		for product in order.products.all():
+			total_cost += product.count * product.price
+		order.totalCost = total_cost
+		order.status = 'saved'
+		order.save()
+		basket_items.delete()
+		data = {"orderId": order.pk}
+
+
+
 		return JsonResponse(data)
 
 	return HttpResponse(status=500)
