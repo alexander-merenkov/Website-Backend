@@ -17,7 +17,7 @@ class Profile(models.Model):
     avatar = models.OneToOneField('Avatar', on_delete=models.CASCADE, null=True, blank=True)
 
     def __str__(self):
-        return self.fullName
+        return f'{self.user}'
 
 
 class Avatar(models.Model):

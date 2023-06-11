@@ -17,3 +17,20 @@ class BasketItem(models.Model):
 
     def __str__(self):
         return f"{self.count} x {self.product.title} in Basket {self.basket.id}"
+
+
+class Order(models.Model):
+    createdAt = models.DateTimeField(auto_now_add=True)
+    fullName = models.CharField(max_length=100, blank=True)
+    email = models.EmailField()
+    phone = models.CharField(verbose_name='phone number', max_length=16)
+    deliveryType = models.CharField(max_length=20, blank=True)
+    paymentType = models.CharField(max_length=20, blank=True)
+    totalCost = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    status = models.CharField(max_length=20, blank=True)
+    city = models.CharField(max_length=50, blank=True)
+    address = models.CharField(max_length=100)
+    products = models.ManyToManyField(ProductFull)
+
+    def __str__(self):
+        return f"Order {self.id} for {self.fullName}"

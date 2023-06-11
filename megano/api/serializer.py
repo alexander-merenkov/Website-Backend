@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from products.models import ProductFull, Image, Tag, Category, Review, Specifications, CategoryImage
 from profiles.models import Profile, Avatar
-from shop.models import Basket, BasketItem
+from shop.models import Basket, BasketItem, Order
 from django.conf import settings
 
 class ImageSerializer(serializers.ModelSerializer):
@@ -111,15 +111,22 @@ class ProfilesSerializer(serializers.ModelSerializer):
         fields = 'fullName', 'email', 'phone', 'avatar'
 
 
-class BasketItemSerializer(serializers.ModelSerializer):
+class OrderSerializer(serializers.ModelSerializer):
+    products = ProductFullSerializer(many=True)
     class Meta:
-        model = BasketItem
-        fields = ['id', 'product', 'count']
+        model = Order
+        fields = (
+            'id',
+            'createdAt',
+            'fullName',
+            'email',
+            'phone',
+            'deliveryType',
+            'paymentType',
+            'totalCost',
+            'status',
+            'city',
+            'address',
+            'products',
+        )
 
-
-class BasketSerializer(serializers.ModelSerializer):
-    products = BasketItemSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Basket
-        fields = ['id', 'user', 'products']
