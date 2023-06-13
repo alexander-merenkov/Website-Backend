@@ -15,7 +15,7 @@ from api.serializer import (
 	TagSerializer,
 	ProfilesSerializer,
 	ProductSaleSerializer,
-	CategorySerializer, OrderSerializer,
+	CategorySerializer, OrderSerializer, OrdersSerializer,
 )
 from products.models import ProductFull, Review, Tag, Category
 from math import ceil
@@ -26,7 +26,7 @@ from django.db import IntegrityError
 from profiles.models import Profile, Avatar
 from django.db import transaction
 
-from shop.models import Basket, BasketItem, Order
+from shop.models import Basket, BasketItem, Order, Orders
 
 User = get_user_model()
 
@@ -219,37 +219,6 @@ def basket(request):
 		return JsonResponse(data, safe=False)
 
 
-def orders(request):
-	if (request.method == "POST"):
-		data = [
-			{
-			"id": 123,
-			"category": 55,
-			"price": 500.67,
-			"count": 12,
-			"date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-			"title": "video card",
-			"description": "description of the product",
-			"freeDelivery": True,
-			"images": [
-					{
-						"src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-						"alt": "hello alt",
-					}
-			 ],
-			 "tags": [
-					{
-						"id": 0,
-						"name": "Hello world"
-					}
-			 ],
-				"reviews": 5,
-				"rating": 4.6
-			}
-		]
-		return JsonResponse(data, safe=False)
-
-
 def signIn(request):
 	if request.method == "POST":
 		body = json.loads(request.body)
@@ -366,91 +335,27 @@ def profilePassword(request):
 
 def orders(request):
 	if(request.method == 'GET'):
-		data = [
-			{
-        "id": 123,
-        "createdAt": "2023-05-05 12:12",
-        "fullName": "Annoying Orange",
-        "email": "no-reply@mail.ru",
-        "phone": "88002000600",
-        "deliveryType": "free",
-        "paymentType": "online",
-        "totalCost": 567.8,
-        "status": "accepted",
-        "city": "Moscow",
-        "address": "red square 1",
-        "products": [
-          {
-            "id": 123,
-            "category": 55,
-            "price": 500.67,
-            "count": 12,
-            "date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-            "title": "video card",
-            "description": "description of the product",
-            "freeDelivery": True,
-            "images": [
-              {
-                "src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-                "alt": "Image alt string"
-              }
-            ],
-            "tags": [
-              {
-                "id": 12,
-                "name": "Gaming"
-              }
-            ],
-            "reviews": 5,
-            "rating": 4.6
-          }
-        ]
-      },
-			{
-        "id": 123,
-        "createdAt": "2023-05-05 12:12",
-        "fullName": "Annoying Orange",
-        "email": "no-reply@mail.ru",
-        "phone": "88002000600",
-        "deliveryType": "free",
-        "paymentType": "online",
-        "totalCost": 567.8,
-        "status": "accepted",
-        "city": "Moscow",
-        "address": "red square 1",
-        "products": [
-          {
-            "id": 123,
-            "category": 55,
-            "price": 500.67,
-            "count": 12,
-            "date": "Thu Feb 09 2023 21:39:52 GMT+0100 (Central European Standard Time)",
-            "title": "video card",
-            "description": "description of the product",
-            "freeDelivery": True,
-            "images": [
-              {
-                "src": "https://proprikol.ru/wp-content/uploads/2020/12/kartinki-ryabchiki-14.jpg",
-                "alt": "Image alt string"
-              }
-            ],
-            "tags": [
-              {
-                "id": 12,
-                "name": "Gaming"
-              }
-            ],
-            "reviews": 5,
-            "rating": 4.6
-          }
-        ]
-      }
-		]
+		orders = Orders.objects.all().filter(user=request.user)
+		serialized = OrdersSerializer(orders, many=True)
+		data = serialized.data[0]
+		data = sorted(data, key=lambda x: x['createdAt'], reverse=True)
 		return JsonResponse(data, safe=False)
 
 	elif(request.method == 'POST'):
+		try:
+			order = Order.objects.get(status='created', user=request.user)
+		except ObjectDoesNotExist:
+			profile, created_profile = Profile.objects.get_or_create(user=request.user)
+			order = Order.objects.create(
+				user=request.user,
+				fullName=profile.fullName,
+				email=profile.email,
+				phone=profile.phone,
+				status='created',
+			)
+
 		data = {
-			"orderId": 123,
+			"orderId": order.pk,
 		}
 		return JsonResponse(data)
 
@@ -459,20 +364,10 @@ def orders(request):
 @transaction.atomic
 def order(request, id):
 
-	profile, created_profile = Profile.objects.get_or_create(user=request.user)
 	basket = Basket.objects.get(user=request.user)
 	basket_items = BasketItem.objects.filter(basket=basket)
 
-	try:
-		order = Order.objects.get(status='created')
-	except ObjectDoesNotExist:
-		order = Order.objects.create(
-			user=request.user,
-			fullName=profile.fullName,
-			email=profile.email,
-			phone=profile.phone,
-			status='created',
-	)
+	order = Order.objects.get(pk=id)
 
 	for basket_item in basket_items:
 		basket_item.product.count = basket_item.count
@@ -502,14 +397,23 @@ def order(request, id):
 		order.totalCost = total_cost
 		order.status = 'saved'
 		order.save()
+
+		orders, orders_created = Orders.objects.get_or_create(user=request.user)
+
+		try:
+			_ = orders.orders.get(id=order.id)
+		except ObjectDoesNotExist:
+			orders.orders.add(order)
+
 		basket_items.delete()
+
+
 		data = {"orderId": order.pk}
-
-
 
 		return JsonResponse(data)
 
 	return HttpResponse(status=500)
+
 
 def payment(request, id):
 	print('qweqwewqeqwe', id)

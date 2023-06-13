@@ -35,3 +35,16 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Order {self.id} for {self.fullName}"
+
+
+class Orders(models.Model):
+    class Meta:
+        verbose_name = 'Orders History'
+        verbose_name_plural = 'Orders Histories'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True)
+    orders = models.ManyToManyField(Order)
+
+    def __str__(self):
+        return f'Orders for {self.user.username}'
+

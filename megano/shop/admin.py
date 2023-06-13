@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Basket, BasketItem, Order
+from .models import Basket, BasketItem, Order, Orders
 
 
 class BasketItemInline(admin.TabularInline):
@@ -14,5 +14,6 @@ class BasketAdmin(admin.ModelAdmin):
 
 admin.site.register(BasketItem)
 admin.site.register(Order)
+admin.site.register(Orders)
 
 

@@ -1,7 +1,9 @@
 from rest_framework import serializers
+from rest_framework.serializers import ListSerializer
+
 from products.models import ProductFull, Image, Tag, Category, Review, Specifications, CategoryImage
 from profiles.models import Profile, Avatar
-from shop.models import Basket, BasketItem, Order
+from shop.models import Basket, BasketItem, Order, Orders
 from django.conf import settings
 
 class ImageSerializer(serializers.ModelSerializer):
@@ -113,6 +115,7 @@ class ProfilesSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     products = ProductFullSerializer(many=True)
+    createdAt = serializers.DateTimeField(format='%Y-%m-%d %H:%M')
     class Meta:
         model = Order
         fields = (
@@ -130,3 +133,14 @@ class OrderSerializer(serializers.ModelSerializer):
             'products',
         )
 
+
+class OrdersSerializer(serializers.ModelSerializer):
+    orders = OrderSerializer(many=True)
+
+    class Meta:
+        model = Orders
+        fields = 'orders',
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        return representation['orders']
