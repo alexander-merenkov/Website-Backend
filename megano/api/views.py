@@ -18,6 +18,7 @@ from api.serializer import (
 	CategorySerializer, OrderSerializer, OrdersSerializer,
 )
 from products.models import ProductFull, Review, Tag, Category
+from shop.models import Basket, BasketItem, Order, Orders, Discount
 from math import ceil
 from django.db.models import Count
 from rest_framework.decorators import api_view
@@ -26,7 +27,6 @@ from django.db import IntegrityError
 from profiles.models import Profile, Avatar
 from django.db import transaction
 
-from shop.models import Basket, BasketItem, Order, Orders
 
 User = get_user_model()
 
@@ -265,7 +265,6 @@ def product(request, id):
 	reviews_serializer = ReviewSerializer(reviews, many=True)
 	data['reviews'] = reviews_serializer.data
 
-
 	return JsonResponse(data)
 
 
@@ -325,7 +324,6 @@ def profilePassword(request):
 	if user is None:
 		return HttpResponse(status=500)
 
-
 	user.set_password(newPassword)
 	user.save()
 	update_session_auth_hash(request, user)
@@ -346,6 +344,12 @@ def orders(request):
 			order = Order.objects.get(status='created', user=request.user)
 		except ObjectDoesNotExist:
 			profile, created_profile = Profile.objects.get_or_create(user=request.user)
+
+			if created_profile:
+
+				profile.fullName = request.user.username
+				profile.save()
+
 			order = Order.objects.create(
 				user=request.user,
 				fullName=profile.fullName,
@@ -360,6 +364,7 @@ def orders(request):
 		return JsonResponse(data)
 
 	return HttpResponse(status=500)
+
 
 @transaction.atomic
 def order(request, id):
@@ -392,8 +397,17 @@ def order(request, id):
 		order.address = body['address']
 
 		total_cost = 0
+		discount = Discount.get_discount()
+
 		for product in order.products.all():
 			total_cost += product.count * product.price
+
+		if order.deliveryType == 'express':
+			total_cost += discount.express
+
+		elif order.deliveryType == 'ordinary' and total_cost < discount.limit:
+			total_cost += discount.regular
+
 		order.totalCost = total_cost
 		order.status = 'saved'
 		order.save()
