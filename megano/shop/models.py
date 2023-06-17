@@ -37,6 +37,18 @@ class Order(models.Model):
         return f"Order {self.id} for {self.user.username}"
 
 
+class Payment(models.Model):
+    order = models.OneToOneField(Order, on_delete=models.CASCADE)
+    number = models.CharField(max_length=16)
+    name = models.CharField(max_length=50)
+    month = models.CharField(max_length=2)
+    year = models.CharField(max_length=4)
+    code = models.CharField(max_length=3)
+
+    def __str__(self):
+        return f'Payment for order №{self.order.pk}'
+
+
 class Orders(models.Model):
     class Meta:
         verbose_name = 'Orders History'

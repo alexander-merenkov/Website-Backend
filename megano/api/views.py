@@ -1,3 +1,5 @@
+import datetime
+
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.storage import FileSystemStorage
 from django.utils import timezone
@@ -18,7 +20,7 @@ from api.serializer import (
 	CategorySerializer, OrderSerializer, OrdersSerializer,
 )
 from products.models import ProductFull, Review, Tag, Category
-from shop.models import Basket, BasketItem, Order, Orders, Discount
+from shop.models import Basket, BasketItem, Order, Orders, Discount, Payment
 from math import ceil
 from django.db.models import Count
 from rest_framework.decorators import api_view
@@ -409,7 +411,7 @@ def order(request, id):
 			total_cost += discount.regular
 
 		order.totalCost = total_cost
-		order.status = 'saved'
+		order.status = 'payment required'
 		order.save()
 
 		orders, orders_created = Orders.objects.get_or_create(user=request.user)
@@ -430,7 +432,44 @@ def order(request, id):
 
 
 def payment(request, id):
-	print('qweqwewqeqwe', id)
+	data = json.loads(request.body)
+	name = data['name']
+	number = data['number']
+	year = data['year']
+	month = data['month']
+	code = data['code']
+
+	error = None
+	try:
+		number = int(number)
+	except ValueError:
+		error = 'invalid card number'
+
+	order = Order.objects.get(pk=id)
+	if order.status == 'payed':
+		print('order payed')
+		return HttpResponse('Order payed', status=500)
+
+	payment, _ = Payment.objects.get_or_create(order=order)
+	payment.name=name
+	payment.number=number
+	payment.year=year
+	payment.month=month
+	payment.code=code
+	payment.save()
+
+	if error:
+		order.status = error
+		order.save()
+
+	elif number % 2 != 0 or number % 10 == 0:
+		order.status = 'invalid payment data'
+		order.save()
+
+	else:
+		order.status = 'payed'
+		order.save()
+
 	return HttpResponse(status=200)
 
 
