@@ -3,6 +3,13 @@ from django.db import models
 from django.db.models import Avg
 
 
+def product_image_upload(instance: User, filename) -> str:
+    return 'products/product_{pk}/image/{filename}'.format(
+        pk=instance.pk,
+        filename=filename,
+    )
+
+
 class CategoryImage(models.Model):
     src = models.ImageField(upload_to='categoryimages/')
     alt = models.CharField(max_length=100)
@@ -25,7 +32,7 @@ class Category(models.Model):
 
 
 class Image(models.Model):
-    src = models.URLField()
+    src = models.ImageField(null=True, blank=True, upload_to=product_image_upload)
     alt = models.CharField(max_length=100)
 
     def __str__(self):

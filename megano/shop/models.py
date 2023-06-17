@@ -4,7 +4,7 @@ from products.models import ProductFull
 
 
 class Basket(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, null=True)
 
     def __str__(self):
         return f"Basket for {self.user.username}"

@@ -28,6 +28,7 @@ from django.urls import reverse
 from django.db import IntegrityError
 from profiles.models import Profile, Avatar
 from django.db import transaction
+from django.contrib.sessions.backends.db import SessionStore
 
 
 User = get_user_model()
@@ -153,21 +154,93 @@ def sales(request):
 
 def basket(request):
 	if(request.method == "GET"):
-		basket = Basket.objects.get(user=request.user)
-		basket_items = BasketItem.objects.filter(basket=basket)
-		data = []
-		for basket_item in basket_items:
-			serialized = ProductFullSerializer(basket_item.product)
-			new_data = serialized.data
-			new_data['count'] = basket_item.count
-			data.append(new_data)
-		return JsonResponse(data, safe=False)
+
+		# Authenticated
+		if request.user.is_authenticated:
+			basket = Basket.objects.get(user=request.user)
+			basket_items = BasketItem.objects.filter(basket=basket)
+			data = []
+			for basket_item in basket_items:
+				serialized = ProductFullSerializer(basket_item.product)
+				new_data = serialized.data
+				new_data['count'] = basket_item.count
+				data.append(new_data)
+
+			return JsonResponse(data, safe=False)
+
+
+		# Anonymous
+		elif request.user.is_anonymous:
+			session_key = request.COOKIES.get('sessionid')
+			if session_key:
+				session = SessionStore(session_key=session_key)
+				basket_id = session.get('basket_id')
+
+			if basket_id:
+				basket = Basket.objects.filter(id=basket_id).first()
+
+				if basket is None:
+					data = []
+				else:
+					basket_items = BasketItem.objects.filter(basket=basket)
+					data = []
+					for basket_item in basket_items:
+						serialized = ProductFullSerializer(basket_item.product)
+						new_data = serialized.data
+						new_data['count'] = basket_item.count
+						data.append(new_data)
+			else:
+				data = []
+
+			return JsonResponse(data, safe=False)
+
+
 
 	elif (request.method == "POST"):
 		body = json.loads(request.body)
 		product_id = body['id']
 		count = body['count']
 		user = request.user
+
+		# Anonymous
+		if user.is_anonymous:
+			session_key = request.COOKIES.get('sessionid')
+
+			if session_key:
+				session = SessionStore(session_key=session_key)
+			else:
+				session = SessionStore()
+			if 'basket_id' not in session:
+				basket = Basket.objects.create()
+				session['basket_id'] = basket.id
+				session.save()
+			else:
+				basket_id = session['basket_id']
+				basket = Basket.objects.get(id=basket_id)
+
+
+			product = ProductFull.objects.get(id=product_id)
+			basket_item, item_created = BasketItem.objects.get_or_create(
+				basket=basket,
+				product=product,
+			)
+			if item_created:
+				basket_item.count = count
+			else:
+				if count:
+					basket_item.count += int(count)
+
+			basket_item.save()
+
+			serialized = ProductFullSerializer(product)
+			data = serialized.data
+			response = JsonResponse(data, safe=False)
+			response.set_cookie('sessionid', session.session_key)
+
+			return response
+
+
+		# Authenticated
 		if user.is_authenticated:
 			basket, basket_created = Basket.objects.get_or_create(user=user)
 			product = ProductFull.objects.get(id=product_id)
@@ -183,42 +256,82 @@ def basket(request):
 
 			basket_item.save()
 
-		serialized = ProductFullSerializer(product)
-		data = serialized.data
-		return JsonResponse(data, safe=False)
+			serialized = ProductFullSerializer(product)
+			data = serialized.data
+
+			return JsonResponse(data, safe=False)
 
 	elif (request.method == "DELETE"):
 		body = json.loads(request.body)
 		product_id = body['id']
 		count = body['count']
 		user = request.user
-		basket = Basket.objects.get(user=user)
-		product = ProductFull.objects.get(id=product_id)
 
-		try:
-			basket_item = BasketItem.objects.get(
-				basket=basket,
-				product=product,
-			)
-		except ObjectDoesNotExist:
-			return HttpResponse(status=500)
+		# Authenticated
+		if user.is_authenticated:
+			basket = Basket.objects.get(user=user)
+			product = ProductFull.objects.get(id=product_id)
 
-		if basket_item.count == 1:
-			basket_item.delete()
+			try:
+				basket_item = BasketItem.objects.get(
+					basket=basket,
+					product=product,
+				)
+			except ObjectDoesNotExist:
+				return HttpResponse(status=500)
 
-		else:
-			basket_item.count -= count
-			if basket_item.count < 0:
-				basket_item.delete()
-			basket_item.save()
-			if basket_item.count == 0:
+			if basket_item.count == 1:
 				basket_item.delete()
 
+			else:
+				basket_item.count -= count
+				if basket_item.count < 0:
+					basket_item.delete()
+				basket_item.save()
+				if basket_item.count == 0:
+					basket_item.delete()
 
-		serialized = ProductFullSerializer(product)
-		data = serialized.data
 
-		return JsonResponse(data, safe=False)
+			serialized = ProductFullSerializer(product)
+			data = serialized.data
+
+			return JsonResponse(data, safe=False)
+
+		# Anonymous
+		elif user.is_anonymous:
+			session_key = request.COOKIES.get('sessionid')
+			if session_key:
+				session = SessionStore(session_key=session_key)
+				basket_id = session.get('basket_id')
+
+			if basket_id:
+				basket = Basket.objects.filter(id=basket_id).first()
+				product = ProductFull.objects.get(id=product_id)
+
+				try:
+					basket_item = BasketItem.objects.get(
+						basket=basket,
+						product=product,
+					)
+				except ObjectDoesNotExist:
+					return HttpResponse(status=500)
+
+				if basket_item.count == 1:
+					basket_item.delete()
+
+				else:
+					basket_item.count -= count
+					if basket_item.count < 0:
+						basket_item.delete()
+					basket_item.save()
+					if basket_item.count == 0:
+						basket_item.delete()
+
+				serialized = ProductFullSerializer(product)
+				data = serialized.data
+
+				return JsonResponse(data, safe=False)
+
 
 
 def signIn(request):
@@ -342,30 +455,31 @@ def orders(request):
 		return JsonResponse(data, safe=False)
 
 	elif(request.method == 'POST'):
-		try:
-			order = Order.objects.get(status='created', user=request.user)
-		except ObjectDoesNotExist:
-			profile, created_profile = Profile.objects.get_or_create(user=request.user)
+		if request.user.is_authenticated:
+			try:
+				order = Order.objects.get(status='created', user=request.user)
+			except ObjectDoesNotExist:
+				profile, created_profile = Profile.objects.get_or_create(user=request.user)
 
-			if created_profile:
+				if created_profile:
 
-				profile.fullName = request.user.username
-				profile.save()
+					profile.fullName = request.user.username
+					profile.save()
 
-			order = Order.objects.create(
-				user=request.user,
-				fullName=profile.fullName,
-				email=profile.email,
-				phone=profile.phone,
-				status='created',
-			)
+				order = Order.objects.create(
+					user=request.user,
+					fullName=profile.fullName,
+					email=profile.email,
+					phone=profile.phone,
+					status='created',
+				)
 
-		data = {
-			"orderId": order.pk,
-		}
-		return JsonResponse(data)
+			data = {
+				"orderId": order.pk,
+			}
+			return JsonResponse(data)
 
-	return HttpResponse(status=500)
+		return HttpResponse('user is not is_authenticated', status=500)
 
 
 @transaction.atomic
@@ -439,7 +553,9 @@ def payment(request, id):
 	month = data['month']
 	code = data['code']
 
+	print(data)
 	error = None
+
 	try:
 		number = int(number)
 	except ValueError:
@@ -447,7 +563,6 @@ def payment(request, id):
 
 	order = Order.objects.get(pk=id)
 	if order.status == 'payed':
-		print('order payed')
 		return HttpResponse('Order payed', status=500)
 
 	payment, _ = Payment.objects.get_or_create(order=order)
@@ -463,12 +578,14 @@ def payment(request, id):
 		order.save()
 
 	elif number % 2 != 0 or number % 10 == 0:
-		order.status = 'invalid payment data'
+		order.status = 'invalid card number'
 		order.save()
 
 	else:
 		order.status = 'payed'
 		order.save()
+
+	print(order.status)
 
 	return HttpResponse(status=200)
 
@@ -477,13 +594,11 @@ def avatar(request):
 	if request.method == "POST":
 		myfile = request.FILES['avatar']
 		fs = FileSystemStorage()
-
 		if myfile.size < 2097152:
 			path = 'users/user_{pk}/avatar/{filename}'.format(
 				pk=request.user.pk,
 				filename=myfile.name,
 			)
-
 			fs.save(path, myfile)
 
 			profile= Profile.objects.get(user=request.user)
